@@ -1,0 +1,126 @@
+:root {
+  --bg: #fdfdfc;
+  --fg: #222;
+  --muted: #8a8a86;
+  --faint: #e6e6e2;
+  --accent: #2b6cb0;
+  --sidebar-bg: #f4f4f1;
+  --sidebar-fg: #444;
+  --selection: #cfe0f7;
+  --cursor-line: #f6f6f2;
+  --code-bg: #f1f1ee;
+  --guide: #d6d6d0;
+  --ws: #fbe3e3;
+  --indent: 1.6em;
+  --prose-font: -apple-system, 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  --mono-font: 'SF Mono', Menlo, Monaco, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1d1d1b; --fg: #e4e4e0; --muted: #8e8e88; --faint: #34342f; --accent: #7fb0ea;
+    --sidebar-bg: #171716; --sidebar-fg: #c4c4bf; --selection: #2f4663; --cursor-line: #232321;
+    --code-bg: #2a2a27; --guide: #3b3b36; --ws: #4a2c2c;
+  }
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body { background: var(--bg); color: var(--fg); font-family: var(--prose-font); -webkit-font-smoothing: antialiased; }
+#app { display: flex; height: 100%; }
+
+/* ---------- sidebar ---------- */
+#sidebar { width: 240px; flex: none; background: var(--sidebar-bg); color: var(--sidebar-fg); display: flex; flex-direction: column; border-right: 1px solid var(--faint); -webkit-app-region: drag; }
+#sidebar.hidden { display: none; }
+#sidebar-head { padding: 44px 12px 8px 14px; display: flex; align-items: baseline; gap: 8px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+#folder-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#choose-folder { -webkit-app-region: no-drag; font: inherit; font-size: 11px; text-transform: none; letter-spacing: 0; color: var(--accent); background: none; border: 0; cursor: pointer; padding: 0; }
+#sidebar-collapse { -webkit-app-region: no-drag; flex: none; font: inherit; font-size: 15px; line-height: 1; color: var(--muted); background: none; border: 0; cursor: pointer; padding: 0 2px; }
+#sidebar-collapse:hover { color: var(--fg); }
+#sidebar-handle { font: inherit; font-size: 15px; line-height: 1; color: var(--muted); background: var(--sidebar-bg); border: 1px solid var(--faint); border-radius: 4px; padding: 3px 7px; cursor: pointer; -webkit-app-region: no-drag; }
+#sidebar-handle:hover { color: var(--fg); }
+#sidebar-handle.hidden { display: none; }
+
+/* ---------- top bar ---------- */
+/* Sits under the hidden macOS title bar. When the sidebar is hidden the traffic lights
+   overlap its left end, so it starts further right. */
+#topbar { flex: none; height: 44px; display: flex; align-items: center; justify-content: space-between; padding: 6px 14px 0; -webkit-app-region: drag; -webkit-user-select: none; }
+#sidebar.hidden + #main #topbar { padding-left: 84px; }
+#mode-switch { margin-left: auto; display: flex; padding: 2px; border-radius: 7px; background: rgba(127,127,127,0.14); -webkit-app-region: no-drag; }
+#mode-switch .mode { font: inherit; font-size: 12px; font-weight: 500; line-height: 1; color: var(--muted); background: none; border: 0; border-radius: 5px; padding: 5px 10px; cursor: pointer; }
+#mode-switch .mode:hover { color: var(--fg); }
+#mode-switch .mode.active { color: var(--fg); background: var(--bg); box-shadow: 0 1px 2px rgba(0,0,0,0.18); }
+
+/* Folder tree: folders expand in place; files sit one step further in than their folder. */
+#file-list, #file-list ul { list-style: none; margin: 0; padding: 0; }
+#file-list { padding-bottom: 20px; overflow-y: auto; -webkit-app-region: no-drag; }
+#file-list .row { display: flex; align-items: center; gap: 4px; padding: 4px 10px 4px calc(14px + var(--depth, 0) * 14px); font-size: 13.5px; cursor: default; white-space: nowrap; overflow: hidden; -webkit-user-select: none; }
+#file-list .name { overflow: hidden; text-overflow: ellipsis; }
+#file-list .chev { flex: none; width: 12px; font-size: 10px; color: var(--muted); }
+#file-list .chev::before { content: '▸'; }
+#file-list li.dir.open > .row .chev::before { content: '▾'; }
+#file-list li.file > .row { padding-left: calc(30px + var(--depth, 0) * 14px); }
+#file-list li.file:not(.md) > .row { color: var(--muted); }
+#file-list .row:hover { background: rgba(127,127,127,0.10); }
+#file-list li.file.active > .row { background: rgba(127,127,127,0.18); color: var(--fg); }
+
+/* ---------- editor area ---------- */
+#main { position: relative; flex: 1; display: flex; flex-direction: column; min-width: 0; }
+#editor { flex: 1; min-height: 0; }
+#statusbar { flex: none; height: 24px; display: flex; justify-content: space-between; align-items: center; padding: 0 14px; font-size: 11.5px; color: var(--muted); border-top: 1px solid var(--faint); -webkit-user-select: none; }
+#status-right span + span { margin-left: 14px; }
+#status-left { display: flex; align-items: center; gap: 12px; min-width: 0; }
+#status-file { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#status-dirty { flex: none; font-weight: 600; padding: 1px 8px; border-radius: 9px; }
+#status-dirty.clean { color: var(--muted); background: rgba(127,127,127,0.12); }
+#status-dirty.dirty { color: #fff; background: #d9822b; }
+#status-dirty.dirty::before { content: '● '; }
+
+.cm-editor.cm-focused { outline: none; }
+
+/* Whitespace-only lines and trailing spaces are shown, never hidden. */
+.cm-trailingSpace { background: var(--ws); border-radius: 2px; }
+
+/* ---------- rendered mode (styles applied to the source text in place) ---------- */
+.lm-mark { color: var(--muted); }
+.lm-h1, .lm-h2, .lm-h3, .lm-h4, .lm-h5, .lm-h6 { font-weight: 700; line-height: 1.3; }
+.lm-h1 { font-size: 1.9em; margin-top: 0.4em; }
+.lm-h2 { font-size: 1.5em; margin-top: 0.4em; }
+.lm-h3 { font-size: 1.25em; margin-top: 0.3em; }
+.lm-h4 { font-size: 1.1em; }
+.lm-h5, .lm-h6 { font-size: 1em; }
+.lm-strong { font-weight: 700; }
+.lm-em { font-style: italic; }
+.lm-strike { text-decoration: line-through; color: var(--muted); }
+.lm-code { font-family: var(--mono-font); font-size: 0.88em; background: var(--code-bg); border-radius: 3px; padding: 0 3px; }
+.lm-link { color: var(--accent); text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--accent) 40%, transparent); }
+.lm-url { color: var(--muted); }
+.lm-quote { border-left: 3px solid var(--guide); padding-left: 0.8em; color: color-mix(in srgb, var(--fg) 75%, var(--muted)); }
+.lm-codeblock { font-family: var(--mono-font); font-size: 0.88em; background: var(--code-bg); padding-left: 0.6em; padding-right: 0.6em; }
+.lm-fence { color: var(--muted); }
+.lm-fence-open, .lm-fence-close { font-size: 0.7em; line-height: 1.5; color: var(--muted); }
+.lm-fence-open { padding-top: 0.4em; }
+.lm-fence-close { padding-bottom: 0.4em; }
+.lm-fence-label { font-family: var(--mono-font); text-transform: uppercase; letter-spacing: 0.08em; -webkit-user-select: none; }
+.lm-table { font-family: var(--mono-font); font-size: 0.88em; }
+.lm-olmark { display: inline-block; color: var(--muted); font-variant-numeric: tabular-nums; -webkit-user-select: none; }
+.lm-check { appearance: none; -webkit-appearance: none; width: 1em; height: 1em; margin: 0; vertical-align: -0.1em; border: 1.5px solid var(--muted); border-radius: 3px; background: var(--bg); cursor: pointer; }
+.lm-check:checked { background: var(--accent); border-color: var(--accent); }
+.lm-check:checked::after { content: ''; display: block; width: 0.3em; height: 0.55em; margin: 0.04em auto 0; border: solid #fff; border-width: 0 2px 2px 0; transform: rotate(45deg); }
+.lm-image { display: inline-block; max-width: 100%; vertical-align: top; }
+.lm-image img { display: block; max-width: 100%; max-height: 60vh; border-radius: 4px; }
+.lm-image.broken { font-size: 0.85em; color: var(--muted); font-family: var(--mono-font); }
+.lm-hr-line { color: var(--muted); }
+
+.lm-bullet { display: inline-block; color: var(--fg); -webkit-user-select: none; }   /* width set from renderer.js */
+.lm-bullet.d1 { color: var(--fg); }
+.lm-bullet.d2, .lm-bullet.d3, .lm-bullet.d4 { color: color-mix(in srgb, var(--fg) 70%, var(--muted)); }
+
+/* List lines use a negative text-indent for their hanging indent; it must not leak into the widgets. */
+.lm-bullet, .lm-olmark, .lm-indent, .lm-check, .lm-image, .lm-fence-label { text-indent: 0; }
+
+/* Indentation is drawn as fixed-width guides so nesting is unmistakable. */
+.lm-indent { display: inline-block; -webkit-user-select: none; white-space: nowrap; }
+.lm-indent .lvl { display: inline-block; width: var(--indent); height: 1.6em; vertical-align: top; border-left: 1px solid var(--guide); }
+.lm-indent .lvl.half { width: calc(var(--indent) / 2); }
+
+.lm-hr { display: block; border: 0; border-top: 1px solid var(--guide); margin: 0.8em 0; height: 0; }
+

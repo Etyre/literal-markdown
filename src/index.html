@@ -1,0 +1,36 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' file: data: https: http:;">
+  <title>Literal</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div id="app">
+    <aside id="sidebar">
+      <div id="sidebar-head">
+        <span id="folder-name" title="">No folder</span>
+        <button id="choose-folder" title="Open Folder… (⇧⌘O)">Open…</button>
+        <button id="sidebar-collapse" title="Hide Sidebar (⌘\)">«</button>
+      </div>
+      <ul id="file-list"></ul>
+    </aside>
+    <main id="main">
+      <div id="topbar">
+        <button id="sidebar-handle" class="hidden" title="Show Sidebar (⌘\)">»</button>
+        <div id="mode-switch" role="radiogroup" aria-label="View" title="Rendered page or raw text (⌘/)">
+          <button id="mode-rendered" class="mode active" role="radio" aria-checked="true">Rendered</button>
+          <button id="mode-raw" class="mode" role="radio" aria-checked="false">Raw</button>
+        </div>
+      </div>
+      <div id="editor"></div>
+      <div id="statusbar">
+        <span id="status-left"><span id="status-dirty" class="clean">Saved</span><span id="status-file">Untitled</span></span>
+        <span id="status-right"><span id="status-pos"></span></span>
+      </div>
+    </main>
+  </div>
+  <script src="../out/renderer.js"></script>
+</body>
+</html>

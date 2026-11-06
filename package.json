@@ -1,0 +1,35 @@
+{
+  "name": "literal-markdown",
+  "version": "0.1.0",
+  "description": "A WYSIWYG Markdown editor that never hides or rewrites a line: every blank line and every indent is shown exactly as it is on disk.",
+  "author": "Eli Tyre",
+  "main": "main.js",
+  "private": true,
+  "scripts": {
+    "build": "esbuild src/renderer.js --bundle --format=iife --platform=browser --outfile=out/renderer.js --log-level=warning",
+    "start": "npm run build && electron .",
+    "package": "npm run build && electron-builder --mac --dir",
+    "install-app": "npm run package && rm -rf \"/Applications/Literal.app\" && cp -R \"dist/mac-arm64/Literal.app\" /Applications/ && xattr -cr \"/Applications/Literal.app\" && codesign --force --deep --sign - \"/Applications/Literal.app\""
+  },
+  "build": {
+    "appId": "com.elityre.literal",
+    "productName": "Literal",
+    "files": ["main.js", "preload.js", "src/index.html", "src/styles.css", "out/**/*", "package.json"],
+    "mac": { "category": "public.app-category.productivity", "target": "dir", "identity": null },
+    "directories": { "output": "dist" }
+  },
+  "dependencies": {
+    "@codemirror/commands": "^6.8.1",
+    "@codemirror/lang-markdown": "^6.3.2",
+    "@codemirror/language": "^6.11.0",
+    "@codemirror/search": "^6.5.10",
+    "@codemirror/state": "^6.5.2",
+    "@codemirror/view": "^6.36.5",
+    "@lezer/markdown": "^1.4.2"
+  },
+  "devDependencies": {
+    "electron": "^44.7.0",
+    "electron-builder": "^26.15.3",
+    "esbuild": "^0.25.0"
+  }
+}
