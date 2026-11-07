@@ -43,6 +43,8 @@ function persist() {
 }
 function persistNow() {
   clearTimeout(persistTimer);
+  // Never write an empty window list: the last window's state is what the next launch restores.
+  if (!windows.size) return;
   const st = { raw: globalRaw, windows: [...windows.values()].map((r) => r.state) };
   try { fs.writeFileSync(statePath(), JSON.stringify(st)); } catch {}
 }
@@ -103,6 +105,8 @@ function createWindow(initial = {}) {
   win.on('move', saveBounds);
 
   win.on('close', (e) => {
+    // Closing the last window quits the app; snapshot it while it still counts.
+    if (!quitting && windows.size === 1) persistNow();
     if (!rec.dirty) return;
     e.preventDefault();
     const wasQuitting = quitting;
@@ -128,9 +132,8 @@ function createWindow(initial = {}) {
   win.on('closed', () => {
     stopWatching(rec);
     windows.delete(win);
-    // Closing the last window quits the app, and that window should come back next launch,
-    // so the state is only rewritten while other windows remain.
     if (!quitting && windows.size > 0) persist();
+    else clearTimeout(persistTimer);
   });
   return win;
 }
@@ -218,12 +221,16 @@ function buildMenu() {
 
 // ---------- file watching (reload when the file changes on disk and the window is clean) ----------
 function stopWatching(rec) { if (rec.watcher) { rec.watcher.close(); rec.watcher = null; } }
+// The folder is watched rather than the file itself, so a program that saves by writing a
+// temporary file and renaming it over the original is noticed too.
 function watchFile(win, rec, file) {
   stopWatching(rec);
   if (!file) return;
   try {
     let timer = null;
-    rec.watcher = fs.watch(file, () => {
+    const name = path.basename(file);
+    rec.watcher = fs.watch(path.dirname(file), (_ev, changed) => {
+      if (changed && changed !== name) return;
       clearTimeout(timer);
       timer = setTimeout(() => { if (!win.isDestroyed()) win.webContents.send('file-changed', file); }, 150);
     });

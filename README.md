@@ -96,7 +96,15 @@ In Rendered mode, clicking a checkbox toggles its `[ ]` / `[x]`, Backspace at th
 
 Enter at the end of a bullet continues the list; Enter on an empty bullet ends it. Enter elsewhere inserts a plain newline with no automatic indentation, so the editor itself never creates whitespace-only lines.
 
-If the open file changes on disk while you have no unsaved edits, it is reloaded automatically.
+## Working alongside an agent
+
+If the open file changes on disk, the change is folded into the window in place, so an agent (or any other program) editing the same file never collides with you. The editor keeps what you were loaded from, what you have typed and what is now on disk, and merges them line by line:
+
+- Changes to different lines all survive. Your cursor, scroll position and undo history stay put, and undo only ever undoes your own typing.
+- With no unsaved edits the file is simply reloaded, again without moving the cursor.
+- Where you and the disk changed the same lines, both versions are kept in the text between `<<<<<<< yours (unsaved in editor)`, `======= theirs (on disk)` and `>>>>>>> end of conflict` markers, and the status bar says so. Delete the version you don't want and save.
+
+Nothing is written back until you save, so a save always contains both your edits and the agent's.
 
 ## Settings that matter
 

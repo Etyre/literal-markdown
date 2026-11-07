@@ -3,7 +3,7 @@
 // line in the file is a line on screen. Blank lines, whitespace-only lines and
 // indentation are always visible, and saving writes the text back byte for byte.
 
-import { EditorState, EditorSelection, Compartment } from '@codemirror/state';
+import { EditorState, EditorSelection, Compartment, Transaction } from '@codemirror/state';
 import {
   EditorView, keymap, Decoration, ViewPlugin, WidgetType,
   drawSelection, dropCursor, highlightActiveLine, highlightTrailingWhitespace,
@@ -12,6 +12,7 @@ import { defaultKeymap, history, historyKeymap, indentMore, indentLess, undo, re
 import { search, searchKeymap, openSearchPanel, setSearchQuery, SearchQuery } from '@codemirror/search';
 import { markdown, markdownLanguage } from '@codemirror/lang-markdown';
 import { syntaxTree, indentUnit } from '@codemirror/language';
+import { merge3, isConflictMarker } from './merge.js';
 
 const api = window.literal;
 const INDENT = '  ';
@@ -156,6 +157,7 @@ function buildDecorations(view) {
     // Indentation guides on every visible line that starts with whitespace but isn't blank.
     for (let p = from; p <= to;) {
       const l = doc.lineAt(p);
+      if (isConflictMarker(l.text)) decos.push(lineCls('lm-conflict').range(l.from));
       const m = /^[ \t]+/.exec(l.text);
       if (m && m[0].length < l.text.length) {
         let cols = 0; for (const ch of m[0]) cols += ch === '\t' ? 2 : 1;
@@ -508,6 +510,7 @@ async function loadFile(file) {
   const text = await api.readFile(file);
   current.file = file;
   current.savedText = text;
+  notice('');
   view.setState(makeState(text));
   dirty = false;
   api.setDirty(false, file);
@@ -539,6 +542,7 @@ async function save() {
   current.savedText = text;
   setDirty(false);
   api.notifySaved();
+  notice('');
   return true;
 }
 async function saveAs() {
@@ -555,6 +559,61 @@ async function saveAs() {
   if (!current.folder || !file.startsWith(current.folder)) await loadFolder(file.slice(0, file.lastIndexOf('/'))); else await refreshFolder();
   markActive();
   return true;
+}
+
+// ---------- changes made on disk while the file is open ----------
+// Another program (typically an agent) wrote the file. Its changes are folded into the
+// document in place: a three-way merge of what was loaded, what is in the editor and what
+// is now on disk. Edits to different lines all survive; the cursor, scroll and undo history
+// stay put. Where both changed the same lines, both versions are kept between conflict
+// markers so nothing is lost silently.
+let merging = null;
+async function mergeFromDisk(file) {
+  if (merging) { merging = 'again'; return; }
+  merging = 'busy';
+  try {
+    let text;
+    try { text = await api.readFile(file); } catch { return; }
+    if (file !== current.file || text === current.savedText) return;
+    const base = current.savedText.split('\n');
+    const ours = view.state.doc.toString().split('\n');
+    const theirs = text.split('\n');
+    const { edits, conflicts } = merge3(base, ours, theirs);
+    const changes = edits.map((e) => lineEditToChange(view.state.doc, e));
+    current.savedText = text;
+    view.dispatch({ changes, annotations: Transaction.addToHistory.of(false), userEvent: 'disk' });
+    setDirty(view.state.doc.toString() !== text);
+    if (conflicts) notice(`Changed on disk: ${conflicts} conflict${conflicts > 1 ? 's' : ''} marked in the text`, true);
+    else notice(dirty ? 'Changed on disk: merged with your edits' : 'Reloaded from disk');
+  } finally {
+    const again = merging === 'again';
+    merging = null;
+    if (again) mergeFromDisk(file);
+  }
+}
+// A line-range edit (0-based, half-open) as a CodeMirror change on `doc`.
+function lineEditToChange(doc, e) {
+  const text = e.lines.join('\n');
+  const n = doc.lines;
+  if (e.from === e.to) {
+    if (e.from >= n) return { from: doc.length, insert: '\n' + text };
+    return { from: doc.line(e.from + 1).from, insert: text + '\n' };
+  }
+  const from = doc.line(e.from + 1).from, to = doc.line(e.to).to;
+  if (!e.lines.length) {
+    if (e.to < n) return { from, to: doc.line(e.to + 1).from };
+    if (e.from > 0) return { from: doc.line(e.from).to, to };
+    return { from, to };
+  }
+  return { from, to, insert: text };
+}
+let noticeTimer = null;
+function notice(text, sticky = false) {
+  const el = $('status-notice');
+  el.textContent = text;
+  el.classList.toggle('warn', sticky);
+  clearTimeout(noticeTimer);
+  if (!sticky) noticeTimer = setTimeout(() => { el.textContent = ''; }, 6000);
 }
 
 // ---------- folder tree ----------
@@ -708,15 +767,7 @@ async function boot() {
   });
   let openedFromOS = false;
   api.onOpenPath((file) => { openedFromOS = true; openFile(file); });   // routed here by the main process
-  api.onFileChanged(async (file) => {
-    if (file !== current.file || dirty) return;
-    const text = await api.readFile(file);
-    if (text === current.savedText) return;
-    const head = Math.min(view.state.selection.main.head, text.length);
-    current.savedText = text;
-    view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: text }, selection: { anchor: head } });
-    setDirty(false);
-  });
+  api.onFileChanged((file) => { if (file === current.file) mergeFromDisk(file); });
 
   // drag & drop a file onto the window
   document.addEventListener('dragover', (e) => e.preventDefault());

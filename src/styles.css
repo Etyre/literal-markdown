@@ -73,6 +73,11 @@ body { background: var(--bg); color: var(--fg); font-family: var(--prose-font); 
 #status-dirty.clean { color: var(--muted); background: rgba(127,127,127,0.12); }
 #status-dirty.dirty { color: #fff; background: #d9822b; }
 #status-dirty.dirty::before { content: '● '; }
+#status-notice { flex: none; white-space: nowrap; color: var(--accent); }
+#status-notice:empty { display: none; }
+#status-notice.warn { color: #d9822b; font-weight: 600; }
+/* Conflict markers left by a merge with changes on disk. */
+.lm-conflict { font-family: var(--mono-font); font-size: 0.8em; color: #d9822b; background: rgba(217,130,43,0.10); }
 
 .cm-editor.cm-focused { outline: none; }
 
