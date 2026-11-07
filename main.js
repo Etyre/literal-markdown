@@ -1,4 +1,12 @@
 'use strict';
+// Literal: the Electron main process of a WYSIWYG Markdown editor that never hides or rewrites
+// a line (the editor itself is src/renderer.js). This file owns windows, the menu, file I/O,
+// dialogs and file watching, and remembers every open window across launches.
+//
+// Config/state: ~/Library/Application Support/literal-markdown/state.json (windows, files,
+// folders, sidebar, Rendered/Raw). The Find-panel draft is in the renderer's localStorage under
+// the same folder. There is no log file: this is a foreground app, errors show in the window
+// or in View > Toggle Developer Tools. The installed copy is /Applications/Literal.app.
 const { app, BrowserWindow, Menu, dialog, ipcMain, shell } = require('electron');
 const fs = require('fs');
 const path = require('path');

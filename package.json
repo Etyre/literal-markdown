@@ -14,9 +14,34 @@
   "build": {
     "appId": "com.elityre.literal",
     "productName": "Literal",
-    "files": ["main.js", "preload.js", "src/index.html", "src/styles.css", "out/**/*", "package.json"],
-    "mac": { "category": "public.app-category.productivity", "target": "dir", "identity": null },
-    "directories": { "output": "dist" }
+    "files": [
+      "main.js",
+      "preload.js",
+      "src/index.html",
+      "src/styles.css",
+      "out/**/*",
+      "package.json"
+    ],
+    "mac": {
+      "category": "public.app-category.productivity",
+      "target": "dir",
+      "identity": null
+    },
+    "directories": {
+      "output": "dist"
+    },
+    "fileAssociations": [
+      {
+        "ext": [
+          "md",
+          "markdown",
+          "mdown"
+        ],
+        "name": "Markdown Document",
+        "role": "Editor",
+        "mimeType": "text/markdown"
+      }
+    ]
   },
   "dependencies": {
     "@codemirror/commands": "^6.8.1",

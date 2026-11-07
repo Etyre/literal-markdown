@@ -9,7 +9,7 @@ import {
   drawSelection, dropCursor, highlightActiveLine, highlightTrailingWhitespace,
 } from '@codemirror/view';
 import { defaultKeymap, history, historyKeymap, indentMore, indentLess, undo, redo } from '@codemirror/commands';
-import { searchKeymap, openSearchPanel } from '@codemirror/search';
+import { search, searchKeymap, openSearchPanel, setSearchQuery, SearchQuery } from '@codemirror/search';
 import { markdown, markdownLanguage } from '@codemirror/lang-markdown';
 import { syntaxTree, indentUnit } from '@codemirror/language';
 
@@ -403,12 +403,33 @@ let current = { file: null, folder: null, savedText: '' };
 let preferRaw = false;   // the last Rendered / Raw choice made on a Markdown file
 let dirty = false;
 
+// ---------- Find / Replace draft ----------
+// The Find panel's fields are the only text inputs besides the document itself (which is
+// the file, not a draft). Whatever is typed there is saved on every change and put back
+// into the editor state before the panel can be shown, so it survives switching files,
+// closing the panel and relaunching. One draft for the whole app: a search term is not
+// specific to a file. Selecting text and pressing ⌘F replaces it on purpose, as in any editor.
+const FIND_DRAFT_KEY = 'literal.find';
+function loadFindDraft() {
+  try { const s = localStorage.getItem(FIND_DRAFT_KEY); return s ? JSON.parse(s) : null; } catch { return null; }
+}
+function saveFindDraft(q) {
+  const draft = { search: q.search, replace: q.replace, caseSensitive: q.caseSensitive, regexp: q.regexp, wholeWord: q.wholeWord };
+  try { localStorage.setItem(FIND_DRAFT_KEY, JSON.stringify(draft)); } catch {}
+}
+function withFindDraft(state) {
+  const draft = loadFindDraft();
+  if (!draft || typeof draft.search !== 'string') return state;
+  return state.update({ effects: setSearchQuery.of(new SearchQuery(draft)) }).state;
+}
+
 function makeState(text) {
-  return EditorState.create({
+  return withFindDraft(EditorState.create({
     doc: text,
     extensions: [
       theme,
       history(),
+      search(),
       drawSelection(),
       dropCursor(),
       highlightActiveLine(),
@@ -429,6 +450,7 @@ function makeState(text) {
       EditorView.updateListener.of((u) => {
         if (u.docChanged) setDirty(u.state.doc.toString() !== current.savedText);
         if (u.docChanged || u.selectionSet) updateStatus();
+        for (const tr of u.transactions) for (const ef of tr.effects) if (ef.is(setSearchQuery)) saveFindDraft(ef.value);
       }),
       EditorView.domEventHandlers({
         click(e) {
@@ -441,7 +463,7 @@ function makeState(text) {
         },
       }),
     ],
-  });
+  }));
 }
 
 function linkUrlAt(pos) {
