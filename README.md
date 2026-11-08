@@ -42,7 +42,7 @@ The Find panel (⌘F) is the only text input besides the document itself. Its se
 | What | Where |
 |---|---|
 | Installed app | `/Applications/Literal.app` (copied from `dist/mac-arm64/Literal.app` by `npm run install-app`) |
-| State (open windows, files, folders, sidebar, Rendered/Raw) | `~/Library/Application Support/literal-markdown/state.json` |
+| State (open windows, files, folders, sidebar, Rendered/Raw, Check Spelling) | `~/Library/Application Support/literal-markdown/state.json` |
 | Find-panel draft | `localStorage` key `literal.find`, stored by Chromium under `~/Library/Application Support/literal-markdown/Local Storage/` |
 | Logs | None. It is a foreground app; errors appear in View > Toggle Developer Tools. |
 | Default-app registration | Launch Services, per user (see Settings that matter) |
@@ -79,18 +79,24 @@ To see what the app is holding in state: `cat ~/Library/Application\ Support/lit
 | Action | Shortcut |
 |---|---|
 | New window | ⌘N |
-| Open file / Open folder | ⌘O / ⇧⌘O |
+| Open file / Open folder, in a window of its own | ⌘O / ⇧⌘O |
+| Change this window's folder | Open… button at the top of the sidebar |
+| Open Recent | File menu; files and folders opened before, kept by macOS |
 | Open a sidebar file in a new window | ⌘-click it |
 | Save / Save As | ⌘S / ⇧⌘S |
+| Rename the open file | File > Rename…, or right-click it in the sidebar |
 | Bold / Italic | ⌘B / ⌘I |
 | Toggle bullet on the current line(s) | ⇧⌘8 |
 | Indent / outdent line(s) | Tab / Shift-Tab |
 | Find | ⌘F |
 | Toggle sidebar | ⌘\ |
 | Rendered / Raw | top bar, or ⌘/ |
+| Check spelling | View > Check Spelling (on by default); right-click a marked word for suggestions or Add to Dictionary |
 | Open a link | ⌘-click |
 
-Opening a folder shows every file in it as a tree in the sidebar; click a folder to expand or collapse it. Markdown files open in whichever of Rendered or Raw you chose last, other text files always open Raw, and binary files are handed to the app macOS would normally open them with. The sidebar always shows the folder of the open file. Opening a file from Finder focuses the window that already shows it, or opens a new window. The `«` button in the sidebar hides it and the `»` button at the top-left brings it back (or ⌘\). Every window's file, folder, expanded folders, sidebar state, size and position are reopened on launch.
+File > Open… and Open Folder… never replace what is in front of you: the file or folder opens in a new window, or in the empty window you are looking at, or focuses the window that already shows it, exactly as opening from Finder does. The Open… button at the top of the sidebar is the one way to change which folder the current window shows. Opening a folder shows every file in it as a tree in the sidebar; click a folder to expand or collapse it. Markdown files open in whichever of Rendered or Raw you chose last, other text files always open Raw, and binary files are handed to the app macOS would normally open them with. The sidebar always shows the folder of the open file. Opening a file from Finder focuses the window that already shows it, or opens a new window; opening a folder from Finder (or `open -a Literal somefolder`) shows it in the sidebar of a new window. Right-click any file or folder in the sidebar for Rename…, Open in New Window and Reveal in Finder. Rename turns the name into a text field in place, as in Finder: the name is selected without its extension, Enter or clicking away commits, Escape cancels, and a clash with an existing name is reported in the status bar. A renamed file or folder is followed by every window that has it, or something inside it, open, so unsaved edits are kept and the next save goes to the new name. The `«` button in the sidebar hides it and the `»` button at the top-left brings it back (or ⌘\). Every window's file, folder, expanded folders, sidebar state, size and position are reopened on launch.
+
+Spelling is checked by macOS's own spellchecker (it follows the languages in System Settings), in both Rendered and Raw: a misspelled word gets the usual underline, right-click it for suggestions or **Add to Dictionary**, and View > Check Spelling turns it off for every window. Words added to the dictionary are kept by Chromium in the app's data folder.
 
 In Rendered mode, clicking a checkbox toggles its `[ ]` / `[x]`, Backspace at the start of a heading or quote removes its hidden marker, and image paths are resolved relative to the file. An empty heading or quote line keeps its `#` or `>` visible so no line can be secretly structural.
 
@@ -115,6 +121,9 @@ Nothing is written back until you save, so a save always contains both your edit
 
 - **The development build and the installed app share state.** Electron names the user-data folder after `package.json`'s `name` (`literal-markdown`), not the product name, so `npm start` and `/Applications/Literal.app` both read and write the same `state.json`. Running `npm start` or the `--screenshot` test while Literal.app is open makes the second instance restore all of the first one's windows and then overwrite the state file when it quits. Quit Literal first.
 - **Rebuilding does not update the running app.** `npm run build` only writes `out/renderer.js`; the installed app runs from its own `app.asar`. Changes to any file, including `package.json`'s `fileAssociations`, reach `/Applications/Literal.app` only after `npm run install-app`, which deletes and replaces the bundle, so do not run it while Literal is open. Whether the installed copy has the document types can be checked with `grep -c CFBundleDocumentTypes /Applications/Literal.app/Contents/Info.plist`.
+- **Never put a vertical margin on anything inside a `.cm-line`, including line classes like `.lm-h2`.** CodeMirror's
+  height map measures each line's box and knows nothing about margins, so a margin above headings made every click
+  land a line or two below where it was aimed, by about 10px per heading above the click. Use padding instead.
 - **Fonts and the active line are set in `EditorView.theme` in `renderer.js`, not in `styles.css`**, because CodeMirror's base theme would otherwise win on specificity.
 - **The Find draft is replaced on purpose by ⌘F with a selection.** Like every editor, pressing ⌘F with text selected puts the selection in the search field; that overwrites the saved draft. ⌘F with no selection brings the previous search back.
 - **Enter never auto-indents.** Automatic indentation is how editors create whitespace-only lines; Literal inserts a plain newline except when continuing a bullet, and `highlightTrailingWhitespace` shows anything that slips through.

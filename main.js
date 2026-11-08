@@ -16,6 +16,7 @@ const path = require('path');
 // every open window so all of them come back on the next launch.
 const windows = new Map();   // BrowserWindow -> { state, dirty, watcher, closeAfterSave, quitAfterClose }
 let globalRaw = false;       // Rendered / Raw is one preference shared by all windows
+let globalSpell = true;      // Check Spelling, likewise shared; macOS's own spellchecker does the work
 let quitting = false;
 let pendingOpenPaths = [];   // files macOS asked us to open before the app was ready
 
@@ -45,7 +46,7 @@ function persistNow() {
   clearTimeout(persistTimer);
   // Never write an empty window list: the last window's state is what the next launch restores.
   if (!windows.size) return;
-  const st = { raw: globalRaw, windows: [...windows.values()].map((r) => r.state) };
+  const st = { raw: globalRaw, spell: globalSpell, windows: [...windows.values()].map((r) => r.state) };
   try { fs.writeFileSync(statePath(), JSON.stringify(st)); } catch {}
 }
 
@@ -91,6 +92,16 @@ function createWindow(initial = {}) {
         app.quit();
       }, 1500);
     }
+  });
+
+  // Right-click on a misspelled word: the spellchecker's suggestions, then Add to Dictionary.
+  win.webContents.on('context-menu', (_e, params) => {
+    if (!params.misspelledWord) return;
+    const items = params.dictionarySuggestions.length
+      ? params.dictionarySuggestions.map((s) => ({ label: s, click: () => win.webContents.replaceMisspelling(s) }))
+      : [{ label: 'No Guesses Found', enabled: false }];
+    items.push({ type: 'separator' }, { label: 'Add to Dictionary', click: () => win.webContents.session.addWordToSpellCheckerDictionary(params.misspelledWord) });
+    Menu.buildFromTemplate(items).popup({ window: win });
   });
 
   // Links in the editor open in the browser, never inside the app.
@@ -141,7 +152,9 @@ function createWindow(initial = {}) {
 // Open a file the way macOS expects: focus the window that already shows it, reuse an
 // empty untouched window, otherwise open a new window.
 function openPath(file) {
-  for (const [w, r] of windows) if (r.state.file === file) { w.focus(); return w; }
+  let isDir = false;
+  try { isDir = fs.statSync(file).isDirectory(); } catch {}
+  for (const [w, r] of windows) if ((isDir ? r.state.folder : r.state.file) === file) { w.focus(); return w; }
   const focused = focusedWindow();
   const rec = focused && windows.get(focused);
   if (rec && !rec.state.file && !rec.dirty) {
@@ -150,7 +163,20 @@ function openPath(file) {
     focused.focus();
     return focused;
   }
-  return createWindow({ file });
+  // A folder opens as a sidebar with no document, the same as Open Folder….
+  if (isDir) app.addRecentDocument(file);
+  return createWindow(isDir ? { folder: file } : { file });
+}
+
+// File > Open… / Open Folder…: the chosen path opens the way a Finder double-click does,
+// in a window of its own, so the document in front is never replaced. An empty, untouched
+// window is reused; a window that already shows the path is focused.
+const FILE_FILTERS = [{ name: 'Markdown', extensions: ['md', 'markdown', 'txt'] }, { name: 'All Files', extensions: ['*'] }];
+async function openDialog(folder) {
+  const win = focusedWindow();
+  const opts = folder ? { properties: ['openDirectory'] } : { properties: ['openFile'], filters: FILE_FILTERS };
+  const r = win ? await dialog.showOpenDialog(win, opts) : await dialog.showOpenDialog(opts);
+  if (!r.canceled && r.filePaths[0]) openPath(r.filePaths[0]);
 }
 
 // A fresh window that shows the same folder as the window it was opened from.
@@ -177,11 +203,14 @@ function buildMenu() {
       label: 'File',
       submenu: [
         { label: 'New Window', accelerator: 'CmdOrCtrl+N', click: () => newWindow() },
-        { label: 'Open…', accelerator: 'CmdOrCtrl+O', click: () => send('open') },
-        { label: 'Open Folder…', accelerator: 'Shift+CmdOrCtrl+O', click: () => send('open-folder') },
+        { label: 'Open…', accelerator: 'CmdOrCtrl+O', click: () => openDialog(false) },
+        { label: 'Open Folder…', accelerator: 'Shift+CmdOrCtrl+O', click: () => openDialog(true) },
+        // macOS keeps this list itself; files and folders are added as they are opened.
+        { role: 'recentDocuments', submenu: [{ type: 'separator' }, { role: 'clearRecentDocuments' }] },
         { type: 'separator' },
         { label: 'Save', accelerator: 'CmdOrCtrl+S', click: () => send('save') },
         { label: 'Save As…', accelerator: 'Shift+CmdOrCtrl+S', click: () => send('save-as') },
+        { label: 'Rename…', click: () => send('rename') },
         { type: 'separator' },
         { label: 'Reveal in Finder', click: () => send('reveal') },
         { type: 'separator' },
@@ -208,6 +237,10 @@ function buildMenu() {
       submenu: [
         { label: 'Toggle Sidebar', accelerator: 'CmdOrCtrl+\\', click: () => send('toggle-sidebar') },
         { label: 'Toggle Rendered / Raw', accelerator: 'CmdOrCtrl+/', click: () => send('toggle-raw') },
+        { label: 'Check Spelling', type: 'checkbox', checked: globalSpell, click: (item) => {
+          globalSpell = item.checked; persist();
+          for (const w of windows.keys()) if (!w.isDestroyed()) w.webContents.send('spellcheck', globalSpell);
+        } },
         { type: 'separator' },
         { role: 'zoomIn' }, { role: 'zoomOut' }, { role: 'resetZoom' },
         { type: 'separator' },
@@ -261,6 +294,7 @@ function listDir(dir) {
 function probeFile(file) {
   try {
     const st = fs.statSync(file);
+    if (st.isDirectory()) return 'dir';
     if (!st.isFile()) return 'missing';
     if (st.size > 20 * 1024 * 1024) return 'large';
     const fd = fs.openSync(file, 'r');
@@ -278,12 +312,13 @@ ipcMain.handle('list-folder', (_e, folder) => listDir(folder));
 ipcMain.handle('probe-file', (_e, file) => probeFile(file));
 ipcMain.handle('open-path', (_e, file) => shell.openPath(file));
 ipcMain.handle('open-new-window', (_e, file) => { newWindow({ file }); });
-ipcMain.handle('get-state', (e) => { const rec = recOf(e.sender); return { ...(rec ? rec.state : {}), raw: globalRaw }; });
+ipcMain.handle('get-state', (e) => { const rec = recOf(e.sender); return { ...(rec ? rec.state : {}), raw: globalRaw, spell: globalSpell }; });
 ipcMain.handle('set-state', (e, patch) => {
   const { raw, ...rest } = patch;
   if (raw !== undefined) globalRaw = !!raw;
   const rec = recOf(e.sender);
   if (rec) Object.assign(rec.state, rest);
+  if (rest.file) app.addRecentDocument(rest.file);   // File > Open Recent
   persist();
 });
 ipcMain.handle('set-dirty', (e, isDirty, file) => {
@@ -303,11 +338,28 @@ ipcMain.on('saved', (e) => {
 });
 ipcMain.on('save-cancelled', (e) => { const rec = recOf(e.sender); if (rec) { rec.closeAfterSave = false; rec.quitAfterClose = false; } });
 ipcMain.handle('reveal', (_e, file) => { if (file) shell.showItemInFolder(file); });
-ipcMain.handle('open-external', (_e, url) => shell.openExternal(url));
-ipcMain.handle('dialog-open-file', async (e) => {
-  const r = await dialog.showOpenDialog(winOf(e.sender), { properties: ['openFile'], filters: [{ name: 'Markdown', extensions: ['md', 'markdown', 'txt'] }, { name: 'All Files', extensions: ['*'] }] });
-  return r.canceled ? null : r.filePaths[0];
+// Rename a file or folder in place. Returns null on success, otherwise a message for the
+// status bar. Every window is told, so one that has the file open (or a file inside the
+// renamed folder) follows it to the new path.
+ipcMain.handle('rename-path', (_e, from, to) => {
+  const name = path.basename(to);
+  if (!name || name === '.' || name === '..' || name.includes('/') || path.dirname(to) !== path.dirname(from)) return 'That name is not allowed.';
+  // On a case-insensitive disk a change of case only is still a rename, not a collision.
+  if (from.toLowerCase() !== to.toLowerCase() && fs.existsSync(to)) return `“${name}” already exists.`;
+  try { fs.renameSync(from, to); } catch (err) { return `Could not rename: ${err.message}`; }
+  for (const w of windows.keys()) if (!w.isDestroyed()) w.webContents.send('path-renamed', from, to);
+  return null;
 });
+// Right-click menu for a sidebar row. Resolves with the chosen command, or null if dismissed.
+ipcMain.handle('sidebar-menu', (e, file, isDir) => new Promise((resolve) => {
+  const item = (label, id) => ({ label, click: () => resolve(id) });
+  const template = [item('Rename…', 'rename'), { type: 'separator' }];
+  if (!isDir) template.push(item('Open in New Window', 'new-window'));
+  template.push(item('Reveal in Finder', 'reveal'));
+  // The click handler runs after the menu closes, so a dismissal is only reported after a moment.
+  Menu.buildFromTemplate(template).popup({ window: winOf(e.sender), callback: () => setTimeout(() => resolve(null), 100) });
+}));
+ipcMain.handle('open-external', (_e, url) => shell.openExternal(url));
 ipcMain.handle('dialog-open-folder', async (e) => {
   const r = await dialog.showOpenDialog(winOf(e.sender), { properties: ['openDirectory'] });
   return r.canceled ? null : r.filePaths[0];
@@ -332,9 +384,10 @@ app.on('open-file', (e, file) => {
 });
 
 app.whenReady().then(() => {
-  buildMenu();
   const st = loadState();
   globalRaw = !!st.raw;
+  globalSpell = st.spell !== false;
+  buildMenu();   // after the state, so the Check Spelling checkbox shows the saved choice
   const arg = process.argv.slice(app.isPackaged ? 1 : 2).find((a) => !a.startsWith('-'));
   if (arg) pendingOpenPaths.push(path.resolve(arg));
   // Every window from last time comes back; files asked for at launch go to their own window

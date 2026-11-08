@@ -13,8 +13,9 @@ contextBridge.exposeInMainWorld('literal', {
   setDirty: (dirty, file) => ipcRenderer.invoke('set-dirty', dirty, file),
   watchFile: (file) => ipcRenderer.invoke('watch-file', file),
   reveal: (file) => ipcRenderer.invoke('reveal', file),
+  renamePath: (from, to) => ipcRenderer.invoke('rename-path', from, to),
+  sidebarMenu: (file, isDir) => ipcRenderer.invoke('sidebar-menu', file, isDir),
   openExternal: (url) => ipcRenderer.invoke('open-external', url),
-  openFileDialog: () => ipcRenderer.invoke('dialog-open-file'),
   openFolderDialog: () => ipcRenderer.invoke('dialog-open-folder'),
   saveAsDialog: (defaultPath) => ipcRenderer.invoke('dialog-save-as', defaultPath),
   confirmDiscard: () => ipcRenderer.invoke('confirm-discard'),
@@ -23,4 +24,6 @@ contextBridge.exposeInMainWorld('literal', {
   onMenu: (cb) => ipcRenderer.on('menu', (_e, cmd) => cb(cmd)),
   onOpenPath: (cb) => ipcRenderer.on('open-path', (_e, file) => cb(file)),
   onFileChanged: (cb) => ipcRenderer.on('file-changed', (_e, file) => cb(file)),
+  onPathRenamed: (cb) => ipcRenderer.on('path-renamed', (_e, from, to) => cb(from, to)),
+  onSpellcheck: (cb) => ipcRenderer.on('spellcheck', (_e, on) => cb(on)),
 });

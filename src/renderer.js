@@ -219,8 +219,8 @@ function buildDecorations(view) {
             if (shown) decos.push(mark(name === 'URL' ? 'lm-url' : 'lm-mark').range(a, b));
             else replace(a, b, hide);
           }
-          return false;
-        } else if (n === 'Autolink' || n === 'URL') {
+          // Keep descending: bold, italic or code inside the link text get their own marks hidden.
+        } else if (n === 'Autolink' || (n === 'URL' && !/^(Link|Image)$/.test(node.node.parent?.name))) {
           decos.push(mark('lm-link').range(node.from, node.to));
         } else if (n === 'Escape') {
           hideMark(node.from, node.from + 1, inside(node.from, node.to));
@@ -304,6 +304,32 @@ const rendered = ViewPlugin.fromClass(class {
   provide: (plugin) => EditorView.atomicRanges.of((view) => view.plugin(plugin)?.atomic || Decoration.none),
 });
 
+// A selection across lines that starts at the visible start of a heading or list item takes the
+// hidden marker with it (`## `, `- `, the indentation), and one that ends there stops short of
+// the next marker, so cutting or deleting a section removes it whole instead of leaving `##`.
+// Single-line selections (a double-clicked word in a heading) are left alone.
+const selectHiddenPrefix = EditorState.transactionFilter.of((tr) => {
+  if (!tr.selection || tr.docChanged || !view) return tr;
+  const plugin = view.plugin(rendered);
+  if (!plugin) return tr;   // Raw mode: nothing is hidden
+  const doc = tr.startState.doc;
+  const prefixEnd = (lineFrom) => {
+    let p = lineFrom, moved = true;
+    while (moved) { moved = false; plugin.atomic.between(p, p, (a, b) => { if (a === p && b > p) { p = b; moved = true; } }); }
+    return p;
+  };
+  const fix = (pos) => { const line = doc.lineAt(pos); const end = prefixEnd(line.from); return end > line.from && pos === end ? line.from : pos; };
+  let changed = false;
+  const ranges = tr.newSelection.ranges.map((r) => {
+    if (r.empty || doc.lineAt(r.from).number === doc.lineAt(r.to).number) return r;
+    const anchor = fix(r.anchor), head = fix(r.head);
+    if (anchor === r.anchor && head === r.head) return r;
+    changed = true;
+    return EditorSelection.range(anchor, head);
+  });
+  return changed ? [tr, { selection: EditorSelection.create(ranges, tr.newSelection.mainIndex) }] : tr;
+});
+
 // =====================================================================
 // Editing commands
 // =====================================================================
@@ -349,11 +375,17 @@ function toggleWrap(view, wrap) {
       while (b < line.to && /\S/.test(line.text[b - line.from])) b++;
       from = a; to = b;
     }
-    const before = state.doc.sliceString(Math.max(0, from - n), from);
-    const after = state.doc.sliceString(to, to + n);
     const text = state.doc.sliceString(from, to);
-    if (before === wrap && after === wrap) {
-      return { changes: [{ from: from - n, to: from }, { from: to, to: to + n }], range: EditorSelection.range(from - n, to - n) };
+    // Already wrapped, possibly inside other emphasis markers (`_**word**_` with `word` selected):
+    // look for the marker just outside any run of other markers and remove that pair.
+    const onlyMarks = (str) => /^[*_]*$/.test(str);
+    for (let k = 0; k <= 4; k++) {
+      const a = from - k - n, b = to + k;
+      if (a < 0 || b + n > state.doc.length) break;
+      if (!onlyMarks(state.doc.sliceString(from - k, from)) || !onlyMarks(state.doc.sliceString(to, b))) break;
+      if (state.doc.sliceString(a, a + n) === wrap && state.doc.sliceString(b, b + n) === wrap) {
+        return { changes: [{ from: a, to: a + n }, { from: b, to: b + n }], range: EditorSelection.range(from - n, to - n) };
+      }
     }
     if (text.startsWith(wrap) && text.endsWith(wrap) && text.length >= 2 * n) {
       return { changes: { from, to, insert: text.slice(n, -n) }, range: EditorSelection.range(from, to - 2 * n) };
@@ -384,6 +416,10 @@ function toggleBullet(view) {
 // Editor setup
 // =====================================================================
 const viewMode = new Compartment();
+// Spell checking is the browser's (on macOS, the system spellchecker); View > Check Spelling switches it.
+const spell = new Compartment();
+const spellAttrs = (on) => EditorView.contentAttributes.of({ spellcheck: on ? 'true' : 'false', autocorrect: 'off', autocapitalize: 'off' });
+let spellOn = true;
 let view;
 
 // Fonts and the active line are set here rather than in styles.css because
@@ -441,8 +477,19 @@ function makeState(text) {
       EditorState.tabSize.of(2),
       markdown({ base: markdownLanguage, addKeymap: false }),
       viewMode.of(rendered),
+      spell.of(spellAttrs(spellOn)),
+      selectHiddenPrefix,
       keymap.of([
         { key: 'Enter', run: insertNewline },
+        // Ctrl-b / Ctrl-i alongside the menu's ⌘B / ⌘I (listed before defaultKeymap, which binds Ctrl-b to cursor-left on macOS).
+        // The menu's ⌘B / ⌘I / ⌘/ are bound here too: CodeMirror's defaultKeymap gives Mod-i to
+        // selectParentSyntax (which selected the whole paragraph) and Mod-/ to toggleComment, and a key
+        // the editor handles never reaches the menu.
+        { key: 'Mod-b', run: (v) => { toggleWrap(v, '**'); return true; } },
+        { key: 'Mod-i', run: (v) => { toggleWrap(v, '_'); return true; } },
+        { key: 'Mod-/', run: () => { toggleRaw(); return true; } },
+        { key: 'Ctrl-b', run: (v) => { toggleWrap(v, '**'); return true; } },
+        { key: 'Ctrl-i', run: (v) => { toggleWrap(v, '_'); return true; } },
         { key: 'Tab', run: indentMore },
         { key: 'Shift-Tab', run: indentLess },
         ...searchKeymap,
@@ -528,6 +575,7 @@ async function loadFile(file) {
 async function openFile(file, newWindow = false) {
   if (file === current.file && !newWindow) return;
   const kind = await api.probeFile(file);
+  if (kind === 'dir') { await loadFolder(file); return; }   // a folder dropped or opened from Finder
   if (kind === 'missing') { await refreshFolder(); return; }
   if (kind !== 'text') { api.openPath(file); return; }   // binary or huge: hand it to the OS
   if (newWindow) { api.openInNewWindow(file); return; }
@@ -654,8 +702,10 @@ function renderDir(dir, ul, depth) {
     const li = document.createElement('li');
     const open = tree.expanded.has(d.path);
     li.className = 'dir' + (open ? ' open' : '');
+    li.dataset.path = d.path;
     li.title = d.path;
     const rw = row(li, depth, () => toggleDir(d.path));
+    rw.addEventListener('contextmenu', (e) => { e.preventDefault(); rowMenu(d.path, true); });
     const chev = document.createElement('span'); chev.className = 'chev'; rw.appendChild(chev);
     const name = document.createElement('span'); name.className = 'name'; name.textContent = d.name; rw.appendChild(name);
     if (open) { const sub = document.createElement('ul'); renderDir(d.path, sub, depth + 1); li.appendChild(sub); }
@@ -667,6 +717,7 @@ function renderDir(dir, ul, depth) {
     li.dataset.path = f.path;
     li.title = f.path;
     const rw = row(li, depth, (e) => openFile(f.path, e.metaKey || e.ctrlKey));
+    rw.addEventListener('contextmenu', (e) => { e.preventDefault(); rowMenu(f.path, false); });
     const name = document.createElement('span'); name.className = 'name'; name.textContent = f.name; rw.appendChild(name);
     ul.appendChild(li);
   }
@@ -703,6 +754,78 @@ async function refreshFolder() {
   for (const d of tree.expanded) await loadDir(d);
   renderTree();
 }
+// ---------- rename in place ----------
+// Rename… (File menu, or right-click a row) turns the row's name into a text field, the way
+// Finder does. Enter or clicking away commits; Escape cancels. The main process does the
+// rename and tells every window, so the open document follows its file to the new name.
+let renaming = null;
+async function rowMenu(p, isDir) {
+  const choice = await api.sidebarMenu(p, isDir);
+  if (choice === 'rename') startRename(p);
+  else if (choice === 'new-window') api.openInNewWindow(p);
+  else if (choice === 'reveal') api.reveal(p);
+}
+function startRename(p) {
+  if (renaming) return;
+  const li = $('file-list').querySelector(`li[data-path="${CSS.escape(p)}"]`);
+  const nameEl = li && li.querySelector(':scope > .row > .name');
+  if (!nameEl) return;
+  const old = nameEl.textContent;
+  const input = document.createElement('input');
+  input.className = 'rename';
+  input.value = old;
+  input.spellcheck = false;
+  nameEl.replaceWith(input);
+  renaming = { path: p, input };
+  const dot = old.lastIndexOf('.');
+  input.focus();
+  input.setSelectionRange(0, dot > 0 ? dot : old.length);   // select the name, not the extension
+  const finish = async (commit) => {
+    if (!renaming || renaming.input !== input) return;
+    renaming = null;
+    const name = input.value.trim();
+    if (commit && name && name !== old) await renameEntry(p, name);
+    else renderTree();
+  };
+  // Keys and clicks must not reach the row (which would open the file) or the editor.
+  input.addEventListener('keydown', (e) => {
+    e.stopPropagation();
+    if (e.key === 'Enter') { e.preventDefault(); finish(true); }
+    else if (e.key === 'Escape') { e.preventDefault(); finish(false); }
+  });
+  input.addEventListener('blur', () => finish(true));
+  for (const ev of ['click', 'mousedown', 'dblclick', 'contextmenu']) input.addEventListener(ev, (e) => e.stopPropagation());
+}
+async function renameEntry(from, name) {
+  const to = `${from.slice(0, from.lastIndexOf('/'))}/${name}`;
+  const err = await api.renamePath(from, to);
+  if (err) { notice(err); renderTree(); }
+  // On success the main process sends path-renamed to every window, including this one.
+}
+const remap = (p, from, to) => (p === from ? to : p && p.startsWith(from + '/') ? to + p.slice(from.length) : p);
+async function onPathRenamed(from, to) {
+  const file = remap(current.file, from, to);
+  if (file !== current.file) {
+    current.file = file;
+    api.watchFile(file);
+    api.setDirty(dirty, file);   // keeps the window's proxy icon on the file
+    api.setState({ file });
+    updateTitle();
+  }
+  if (!current.folder) return;
+  tree.expanded = new Set([...tree.expanded].map((d) => remap(d, from, to)));
+  const folder = remap(current.folder, from, to);
+  if (folder !== current.folder) {
+    current.folder = folder;
+    $('folder-name').textContent = folder.split('/').pop();
+    $('folder-name').title = folder;
+  }
+  api.setState({ folder, expanded: [...tree.expanded] });
+  await refreshFolder();
+  const li = $('file-list').querySelector('li.active');
+  if (li) li.scrollIntoView({ block: 'nearest' });
+}
+
 function markActive() {
   for (const li of $('file-list').querySelectorAll('li.file')) li.classList.toggle('active', li.dataset.path === current.file);
 }
@@ -740,6 +863,7 @@ function toggleRaw() { chooseMode(!rawOn); }
 async function boot() {
   document.documentElement.style.setProperty('--indent', `${INDENT_EM}em`);
   view = new EditorView({ state: makeState(''), parent: $('editor') });
+  window.literalView = view;   // for debugging from View > Toggle Developer Tools
   updateTitle(); updateStatus();
 
   $('choose-folder').addEventListener('click', async () => { const f = await api.openFolderDialog(); if (f) loadFolder(f); });
@@ -750,11 +874,10 @@ async function boot() {
 
   api.onMenu(async (cmd) => {
     switch (cmd) {
-      case 'open': { const f = await api.openFileDialog(); if (f) openFile(f); return; }
-      case 'open-folder': { const f = await api.openFolderDialog(); if (f) loadFolder(f); return; }
       case 'save': { if (!(await save())) api.notifySaveCancelled(); return; }
       case 'save-as': return saveAs();
       case 'reveal': return api.reveal(current.file);
+      case 'rename': if (current.file) { await revealInTree(current.file); startRename(current.file); } return;
       case 'undo': undo(view); return;
       case 'redo': redo(view); return;
       case 'find': openSearchPanel(view); return;
@@ -768,6 +891,8 @@ async function boot() {
   let openedFromOS = false;
   api.onOpenPath((file) => { openedFromOS = true; openFile(file); });   // routed here by the main process
   api.onFileChanged((file) => { if (file === current.file) mergeFromDisk(file); });
+  api.onPathRenamed(onPathRenamed);
+  api.onSpellcheck((on) => { spellOn = on; view.dispatch({ effects: spell.reconfigure(spellAttrs(on)) }); });
 
   // drag & drop a file onto the window
   document.addEventListener('dragover', (e) => e.preventDefault());
@@ -779,10 +904,16 @@ async function boot() {
 
   const st = await api.getState();
   preferRaw = !!st.raw;
+  spellOn = st.spell !== false;
+  view.dispatch({ effects: spell.reconfigure(spellAttrs(spellOn)) });
   applyRaw(preferRaw);
   if (st.sidebarHidden) setSidebar(false);
   if (st.folder) await loadFolder(st.folder, st.expanded || []);
-  if (st.file && !openedFromOS) { try { await loadFile(st.file); } catch {} }
+  if (st.file && !openedFromOS) {
+    // A folder remembered as the file (older builds did this) is shown as the sidebar instead.
+    if ((await api.probeFile(st.file)) === 'dir') { await loadFolder(st.file); api.setState({ file: null }); }
+    else { try { await loadFile(st.file); } catch {} }
+  }
   view.focus();
 }
 boot();
