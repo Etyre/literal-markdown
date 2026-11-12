@@ -384,6 +384,8 @@ app.on('open-file', (e, file) => {
 });
 
 app.whenReady().then(() => {
+  // The packaged app gets its icon from the bundle; `npm start` would otherwise show Electron's.
+  if (!app.isPackaged && app.dock) app.dock.setIcon(path.join(__dirname, 'build', 'icon.png'));
   const st = loadState();
   globalRaw = !!st.raw;
   globalSpell = st.spell !== false;

@@ -34,6 +34,9 @@ The Find panel (⌘F) is the only text input besides the document itself. Its se
 | `src/styles.css` | Colours (light and dark), sidebar, top bar, status bar, indent guides, whitespace highlight. Editor fonts live in `renderer.js` (see Gotchas). |
 | `package.json` | Scripts (`build`, `start`, `package`, `install-app`), electron-builder config (app id, product name, Markdown file associations), dependencies. |
 | `package-lock.json` | Locked dependency versions. |
+| `build/icon.svg` | The app icon's source: a pilcrow (the "show invisibles" mark) followed by the pink trailing-whitespace block, on Apple's 824-in-1024 icon grid. |
+| `build/make-icon.js` | Renders `icon.svg` with Electron into `icon.icns` (all sizes) and `icon.png` (`npm run icon`). |
+| `build/icon.icns`, `build/icon.png` | Generated but committed. electron-builder picks up `build/icon.icns` by convention; `icon.png` is the Dock icon under `npm start`. |
 | `out/renderer.js` | esbuild bundle of `src/renderer.js` (generated, gitignored). |
 | `dist/mac-arm64/Literal.app` | electron-builder output (generated, gitignored). |
 
@@ -57,6 +60,7 @@ npm start                       # build and launch from source
 npm start -- path/to/file.md    # open a file on launch
 npm run build                   # just rebuild out/renderer.js (safe while Literal.app is running)
 npm run install-app             # build, package and install to /Applications (quit Literal first)
+npm run icon                    # after editing build/icon.svg: regenerate icon.icns and icon.png
 ```
 
 `npm run install-app` builds `dist/mac-arm64/Literal.app` and copies it to `/Applications`, strips quarantine

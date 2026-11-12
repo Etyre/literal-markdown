@@ -8,6 +8,7 @@
   "scripts": {
     "build": "esbuild src/renderer.js --bundle --format=iife --platform=browser --outfile=out/renderer.js --log-level=warning",
     "start": "npm run build && electron .",
+    "icon": "electron build/make-icon.js",
     "package": "npm run build && electron-builder --mac --dir",
     "install-app": "npm run package && rm -rf \"/Applications/Literal.app\" && cp -R \"dist/mac-arm64/Literal.app\" /Applications/ && xattr -cr \"/Applications/Literal.app\" && codesign --force --deep --sign - \"/Applications/Literal.app\""
   },
