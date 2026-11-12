@@ -30,7 +30,7 @@ The Find panel (⌘F) is the only text input besides the document itself. Its se
 | `main.js` | Electron main process: windows, menu, dialogs, file read/write/watch, `state.json`, open-from-Finder handling, `--screenshot` test aid. |
 | `preload.js` | The `window.literal` bridge between renderer and main (IPC wrappers only). |
 | `src/renderer.js` | The editor: CodeMirror setup, Rendered-mode decorations, list/indent/Enter behaviour, sidebar tree, save/open, Rendered/Raw switch, Find-panel draft. |
-| `src/index.html` | Window layout: sidebar, top bar with mode switch, editor, status bar. Loads `out/renderer.js`. |
+| `src/index.html` | Window layout: sidebar, top bar with mode switch, editor, status bar (Saved badge, file path, Ln/Col). The status bar is drawn directly under the top bar by two `order` rules in `styles.css`; delete them to put it back at the bottom. Loads `out/renderer.js`. |
 | `src/styles.css` | Colours (light and dark), sidebar, top bar, status bar, indent guides, whitespace highlight. Editor fonts live in `renderer.js` (see Gotchas). |
 | `package.json` | Scripts (`build`, `start`, `package`, `install-app`), electron-builder config (app id, product name, Markdown file associations), dependencies. |
 | `package-lock.json` | Locked dependency versions. |

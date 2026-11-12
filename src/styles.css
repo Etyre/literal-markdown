@@ -68,6 +68,11 @@ body { background: var(--bg); color: var(--fg); font-family: var(--prose-font); 
 #main { position: relative; flex: 1; display: flex; flex-direction: column; min-width: 0; }
 #editor { flex: 1; min-height: 0; }
 #statusbar { flex: none; height: 24px; display: flex; justify-content: space-between; align-items: center; padding: 0 14px; font-size: 11.5px; color: var(--muted); border-top: 1px solid var(--faint); -webkit-user-select: none; }
+/* The status bar sits under the top bar, above the text. To put it back at the bottom of the
+   window, delete the next two rules: the HTML order is still topbar, editor, statusbar. */
+#statusbar { order: 1; border-top: none; border-bottom: 1px solid var(--faint); }
+#editor { order: 2; }
+#status-right { flex: none; white-space: nowrap; margin-left: 12px; }   /* a long path must not squeeze Ln/Col onto two lines */
 #status-right span + span { margin-left: 14px; }
 #status-left { display: flex; align-items: center; gap: 12px; min-width: 0; }
 #status-file { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
