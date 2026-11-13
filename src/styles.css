@@ -39,6 +39,11 @@ body { background: var(--bg); color: var(--fg); font-family: var(--prose-font); 
 #sidebar-handle:hover { color: var(--fg); }
 #sidebar-handle.hidden { display: none; }
 
+/* The + at the bottom of the sidebar: a new document in the open file's folder. */
+#sidebar-foot { flex: none; display: flex; padding: 4px 8px 6px; border-top: 1px solid var(--faint); }
+#new-file { -webkit-app-region: no-drag; font: inherit; font-size: 18px; line-height: 1; color: var(--muted); background: none; border: 0; border-radius: 5px; padding: 2px 8px 4px; cursor: pointer; }
+#new-file:hover { color: var(--fg); background: rgba(127,127,127,0.14); }
+
 /* ---------- top bar ---------- */
 /* Sits under the hidden macOS title bar. When the sidebar is hidden the traffic lights
    overlap its left end, so it starts further right. */
@@ -51,7 +56,7 @@ body { background: var(--bg); color: var(--fg); font-family: var(--prose-font); 
 
 /* Folder tree: folders expand in place; files sit one step further in than their folder. */
 #file-list, #file-list ul { list-style: none; margin: 0; padding: 0; }
-#file-list { padding-bottom: 20px; overflow-y: auto; -webkit-app-region: no-drag; }
+#file-list { flex: 1; min-height: 0; padding-bottom: 20px; overflow-y: auto; -webkit-app-region: no-drag; }
 #file-list .row { display: flex; align-items: center; gap: 4px; padding: 4px 10px 4px calc(14px + var(--depth, 0) * 14px); font-size: 13.5px; cursor: default; white-space: nowrap; overflow: hidden; -webkit-user-select: none; }
 #file-list .name { overflow: hidden; text-overflow: ellipsis; }
 #file-list .chev { flex: none; width: 12px; font-size: 10px; color: var(--muted); }

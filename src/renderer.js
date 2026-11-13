@@ -765,7 +765,7 @@ async function rowMenu(p, isDir) {
   else if (choice === 'new-window') api.openInNewWindow(p);
   else if (choice === 'reveal') api.reveal(p);
 }
-function startRename(p) {
+function startRename(p, done) {
   if (renaming) return;
   const li = $('file-list').querySelector(`li[data-path="${CSS.escape(p)}"]`);
   const nameEl = li && li.querySelector(':scope > .row > .name');
@@ -786,6 +786,7 @@ function startRename(p) {
     const name = input.value.trim();
     if (commit && name && name !== old) await renameEntry(p, name);
     else renderTree();
+    if (done) done();
   };
   // Keys and clicks must not reach the row (which would open the file) or the editor.
   input.addEventListener('keydown', (e) => {
@@ -795,6 +796,32 @@ function startRename(p) {
   });
   input.addEventListener('blur', () => finish(true));
   for (const ev of ['click', 'mousedown', 'dblclick', 'contextmenu']) input.addEventListener(ev, (e) => e.stopPropagation());
+}
+// ---------- new document ----------
+// The + at the bottom of the sidebar. The file is created on disk straight away, next to the
+// open file (or at the top of the sidebar's folder), opened in this window, and its name is
+// put into rename so it can be typed over; Enter or Escape then lands in the empty document.
+// With no folder open there is nowhere obvious to put it, so the save dialog asks.
+async function newDocument() {
+  if (renaming) return;
+  if (dirty && !(await api.confirmDiscard())) return;
+  let file;
+  if (current.folder) {
+    const inTree = current.file && current.file.startsWith(current.folder + '/');
+    const r = await api.createFile(inTree ? current.file.slice(0, current.file.lastIndexOf('/')) : current.folder);
+    if (r.error) { notice(r.error); return; }
+    file = r.path;
+  } else {
+    file = await api.saveAsDialog('Untitled.md');
+    if (!file) return;
+    await api.writeFile(file, '');
+  }
+  await loadFile(file);   // also refreshes the tree, which was listed before the file existed
+  if (current.folder) {
+    setSidebar(true);   // the name is typed in the sidebar row, so it has to be on screen
+    await refreshFolder(); await revealInTree(file); startRename(file, () => view.focus());
+  }
+  else view.focus();
 }
 async function renameEntry(from, name) {
   const to = `${from.slice(0, from.lastIndexOf('/'))}/${name}`;
@@ -868,6 +895,7 @@ async function boot() {
 
   $('choose-folder').addEventListener('click', async () => { const f = await api.openFolderDialog(); if (f) loadFolder(f); });
   $('sidebar-collapse').addEventListener('click', () => setSidebar(false));
+  $('new-file').addEventListener('click', newDocument);
   $('sidebar-handle').addEventListener('click', () => setSidebar(true));
   $('mode-rendered').addEventListener('click', () => chooseMode(false));
   $('mode-raw').addEventListener('click', () => chooseMode(true));
@@ -876,6 +904,7 @@ async function boot() {
     switch (cmd) {
       case 'save': { if (!(await save())) api.notifySaveCancelled(); return; }
       case 'save-as': return saveAs();
+      case 'new-document': return newDocument();
       case 'reveal': return api.reveal(current.file);
       case 'rename': if (current.file) { await revealInTree(current.file); startRename(current.file); } return;
       case 'undo': undo(view); return;

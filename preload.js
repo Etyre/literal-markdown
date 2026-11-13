@@ -13,6 +13,7 @@ contextBridge.exposeInMainWorld('literal', {
   setDirty: (dirty, file) => ipcRenderer.invoke('set-dirty', dirty, file),
   watchFile: (file) => ipcRenderer.invoke('watch-file', file),
   reveal: (file) => ipcRenderer.invoke('reveal', file),
+  createFile: (dir) => ipcRenderer.invoke('create-file', dir),
   renamePath: (from, to) => ipcRenderer.invoke('rename-path', from, to),
   sidebarMenu: (file, isDir) => ipcRenderer.invoke('sidebar-menu', file, isDir),
   openExternal: (url) => ipcRenderer.invoke('open-external', url),

@@ -202,6 +202,7 @@ function buildMenu() {
     {
       label: 'File',
       submenu: [
+        { label: 'New Document', accelerator: 'Shift+CmdOrCtrl+N', click: () => send('new-document') },
         { label: 'New Window', accelerator: 'CmdOrCtrl+N', click: () => newWindow() },
         { label: 'Open…', accelerator: 'CmdOrCtrl+O', click: () => openDialog(false) },
         { label: 'Open Folder…', accelerator: 'Shift+CmdOrCtrl+O', click: () => openDialog(true) },
@@ -349,6 +350,17 @@ ipcMain.handle('rename-path', (_e, from, to) => {
   try { fs.renameSync(from, to); } catch (err) { return `Could not rename: ${err.message}`; }
   for (const w of windows.keys()) if (!w.isDestroyed()) w.webContents.send('path-renamed', from, to);
   return null;
+});
+// The sidebar's + button: create an empty Markdown file in `dir` under the first free name
+// (Untitled.md, Untitled 2.md, …). The 'wx' flag makes the write fail rather than replace a
+// file that appeared in the meantime. Returns { path } or { error } for the status bar.
+ipcMain.handle('create-file', (_e, dir) => {
+  for (let n = 1; n < 1000; n++) {
+    const file = path.join(dir, n === 1 ? 'Untitled.md' : `Untitled ${n}.md`);
+    try { fs.writeFileSync(file, '', { encoding: 'utf8', flag: 'wx' }); return { path: file }; }
+    catch (err) { if (err.code !== 'EEXIST') return { error: `Could not create a document: ${err.message}` }; }
+  }
+  return { error: 'Could not find a free name for a new document.' };
 });
 // Right-click menu for a sidebar row. Resolves with the chosen command, or null if dismissed.
 ipcMain.handle('sidebar-menu', (e, file, isDir) => new Promise((resolve) => {
